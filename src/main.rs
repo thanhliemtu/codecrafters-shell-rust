@@ -13,6 +13,10 @@ fn main() {
 
 		// Validate input
 		match input.trim() {
+			cmd if cmd.starts_with("echo ") => {
+				let message = cmd.trim_start_matches("echo ");
+				println!("{}", message);
+			},
 			"exit 0" => std::process::exit(0),
 			cmd => println!("{}: command not found", cmd),
 		}
