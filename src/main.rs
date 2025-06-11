@@ -37,7 +37,6 @@ fn main() -> Result<(), std::env::VarError> {
 				acc
 			});
 
-	println!("{:?}", path_commands.iter().take(10).collect::<Vec<_>>());
 	// Wait for user input
     loop {
 		// Prompt the user for input
