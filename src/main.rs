@@ -12,11 +12,9 @@ fn main() {
         io::stdin().read_line(&mut input).unwrap();
 
 		// Validate input
-		if input == "exit 0\n" || input == "exit 0\r\n" {
-			std::process::exit(0)
-		} 
-		else {
-			println!("{}: command not found", input.trim());
+		match input.trim() {
+			"exit 0" => std::process::exit(0),
+			cmd => println!("{}: command not found", cmd),
 		}
     }
 }
