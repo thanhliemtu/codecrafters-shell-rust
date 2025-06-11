@@ -29,7 +29,7 @@ fn main() -> Result<(), std::env::VarError> {
 							Some(s) => s.to_owned(),
 							None => return None,
 						};
-						Some((name, p))          // borrow already over; p can move
+						Some((name, p)) 
 					})
 			})
 			.fold(HashMap::new(), |mut acc, (name, path)| {
