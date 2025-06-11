@@ -10,7 +10,7 @@ fn main() -> Result<(), std::env::VarError> {
 	// Build an index of *external* commands once at start-up
 	let val = env::var("PATH").unwrap();
 	let paths: Vec<&str> = val
-		.split(":")
+		.split(':')
 		.filter(|x| !x.contains("/mnt/c"))
 		.filter(|x| !x.contains("/home/admin/.vscode-server"))
 		.collect();
