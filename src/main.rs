@@ -97,8 +97,15 @@ fn main() -> Result<(), std::env::VarError> {
 			},
 
 			"cd" => {
-				let query = parts.next().unwrap_or("/"); // default to root if no argument is given
-				let dir = Path::new(query).canonicalize();
+				// If no argument is given, change to the home directory,
+				// or to the root directory if HOME is not set
+				let query = 
+				match parts.next() {
+					Some(q) => q.to_owned(),
+					None => env::var("HOME").unwrap_or_else(|_| "/".to_owned())
+				};
+				
+				let dir = Path::new(&query).canonicalize();
 				match dir {
 					Err(_) => eprintln!("cd: {query}: No such file or directory"),
 					Ok(path) => env::set_current_dir(path).unwrap()
