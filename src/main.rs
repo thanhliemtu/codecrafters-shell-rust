@@ -25,6 +25,12 @@ fn main() -> Result<(), std::env::VarError> {
 					.flatten()
 					.filter_map(Result::ok)
 					.filter_map(|e| {
+						if !e.file_type().map_or(false, |ft| ft.is_file()) {
+							// Only consider files, skip directories and other types
+							// Also skip if the filetype cannot be determined
+							return None;
+						}
+
 						let p = e.path();
 						let name = match p.file_name().and_then(|n| n.to_str()) {
 							Some(s) => s.to_owned(),
@@ -86,6 +92,13 @@ fn main() -> Result<(), std::env::VarError> {
 				match env::current_dir() {
 					Ok(path) => println!("{}", path.display()),
 					Err(e) => eprintln!("pwd: {}", e),
+				}
+			},
+
+			"cd" => {
+				let dir = parts.next().unwrap_or("/"); // default to root if no argument is given
+				if env::set_current_dir(dir).is_err() {
+					eprintln!("cd: {dir}: No such file or directory");
 				}
 			},
 
