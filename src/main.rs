@@ -99,10 +99,12 @@ fn main() -> Result<(), std::env::VarError> {
 			"cd" => {
 				// If no argument is given, change to the home directory,
 				// or to the root directory if HOME is not set
+				let fallback = env::var("HOME").unwrap_or_else(|_| "/".to_owned());
 				let query = 
 				match parts.next() {
+					Some("~") => fallback,
 					Some(q) => q.to_owned(),
-					None => env::var("HOME").unwrap_or_else(|_| "/".to_owned())
+					None => fallback
 				};
 				
 				let dir = Path::new(&query).canonicalize();
