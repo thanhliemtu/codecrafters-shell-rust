@@ -67,8 +67,8 @@ fn tokenize(input: &str) -> Vec<String> {
 				else {
 					current_token.push('\\');
 					current_token.push(any); // In double quotes, we just add the character to the current token
-					state = TokenizerState::InDoubleQuote; // Return to double quote state
 				}
+				state = TokenizerState::InDoubleQuote; // Return to double quote state
 			}
 		}
 	};
