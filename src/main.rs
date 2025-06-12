@@ -83,8 +83,8 @@ fn main() -> Result<(), std::env::VarError> {
 			},
 
 			other => {
-				if let Some(path) = path_commands.get(other) {
-					let output = Command::new(path)
+				if let Some(_) = path_commands.get(other) {
+					let output = Command::new(other)
 						.args(parts)
 						.output()
 						.expect("Failed to execute command");
