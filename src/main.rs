@@ -60,7 +60,7 @@ fn tokenize(input: &str) -> Vec<String> {
 			},
 
 			(TokenizerState::BackSlashInDoubleQuote, any) => {
-				if any == '$' || any == '`' || any == '\\' || any == '"' {
+				if any == '$' || any == '`' || any == '\\' || any == '"' || any == '\n'{
 					// In double quotes, we escape $, `, \ and " characters
 					current_token.push(any);
 				}
