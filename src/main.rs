@@ -2,13 +2,14 @@
 use std::io::{self, Write};
 use std::{env, fs};
 use std::collections::HashMap;
+use std::process::Command;
 
 fn main() -> Result<(), std::env::VarError> {
 	// Define the built-in commands for this shell
 	static BUILTIN_COMMANDS: [&str; 3] = ["type", "echo", "exit"];
 
 	// Build an index of *external* commands once at start-up
-	let val = env::var("PATH").unwrap();
+	let val = env::var("PATH").unwrap(); // this panics if PATH is not set, in which case what's the point?
 	let paths: Vec<&str> = val
 		.split(':')
 		.filter(|x| !x.contains("/mnt/c"))
@@ -81,7 +82,23 @@ fn main() -> Result<(), std::env::VarError> {
 				}
 			},
 
-			other => println!("{other}: command not found"),
+			other => {
+				if let Some(path) = path_commands.get(other) {
+					let output = Command::new(path)
+						.args(parts)
+						.output()
+						.expect("Failed to execute command");
+					
+					if !output.stdout.is_empty() {
+						print!("{}", String::from_utf8_lossy(&output.stdout));
+					}
+					if !output.stderr.is_empty() {
+						eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+					}
+				} else {
+					println!("{other}: not found");
+				}
+			} 
 		}
     }
 }
