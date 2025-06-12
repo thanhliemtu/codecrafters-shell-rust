@@ -6,7 +6,7 @@ use std::process::Command;
 
 fn main() -> Result<(), std::env::VarError> {
 	// Define the built-in commands for this shell
-	static BUILTIN_COMMANDS: [&str; 3] = ["type", "echo", "exit"];
+	static BUILTIN_COMMANDS: [&str; 4] = ["type", "echo", "exit", "pwd"];
 
 	// Build an index of *external* commands once at start-up
 	let val = env::var("PATH").unwrap(); // this panics if PATH is not set, in which case what's the point?
@@ -82,6 +82,14 @@ fn main() -> Result<(), std::env::VarError> {
 				}
 			},
 
+			"pwd" => {
+				match env::current_dir() {
+					Ok(path) => println!("{}", path.display()),
+					Err(e) => eprintln!("pwd: {}", e),
+				}
+			},
+
+			// Handle external commands, i.e., commands not in the built-in list
 			other => {
 				if let Some(_) = path_commands.get(other) {
 					let output = Command::new(other)
