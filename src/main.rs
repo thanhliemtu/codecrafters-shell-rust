@@ -5,27 +5,38 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::path::{Path, PathBuf};
 
+#[derive(PartialEq)]
 enum TokenizerState {
 	InSingleQuote,
-	OutSingleQuote,
+	InDoubleQuote,
+	BackSlashInDoubleQuote,
+	Out,
 }
 
 fn tokenize(input: &str) -> Vec<String> {
 	let mut tokens = Vec::new();
 	let mut current_token = String::new();
-	let mut state = TokenizerState::OutSingleQuote;
+	let mut state = TokenizerState::Out;
 
 	for ch in input.chars() {
 		match (&state, ch) {
-			(TokenizerState::OutSingleQuote, '\'') => {
+			(TokenizerState::Out, '\"') => {
+				state = TokenizerState::InDoubleQuote;
+			},
+			
+			(TokenizerState::Out, '\'') => {
 				state = TokenizerState::InSingleQuote;
 			},
 
 			(TokenizerState::InSingleQuote, '\'') => {
-				state = TokenizerState::OutSingleQuote;
+				state = TokenizerState::Out;
 			},
-				
-			(TokenizerState::OutSingleQuote, char) => {
+
+			(TokenizerState::InDoubleQuote, '\"') => {
+				state = TokenizerState::Out;
+			},
+
+			(TokenizerState::Out, char) => {
 				if char.is_whitespace() { // If we encounter whitespace, we finalize the current token
 					if !current_token.is_empty() {
 						tokens.push(current_token.clone());
@@ -39,6 +50,25 @@ fn tokenize(input: &str) -> Vec<String> {
 			(TokenizerState::InSingleQuote, any) => {
 				current_token.push(any); // In single quotes, we just add the character to the current token
 			},
+
+			(TokenizerState::InDoubleQuote, any) => {
+				if any == '\\' {
+					state = TokenizerState::BackSlashInDoubleQuote; // In double quotes, a backslash changes the state
+					continue; // Skip adding the backslash to the current token
+				}
+				current_token.push(any); // In double quotes, we just add the character to the current token
+			},
+
+			(TokenizerState::BackSlashInDoubleQuote, any) => {
+				if any == '$' || any == '`' || any == '\\' || any == '"' {
+					// In double quotes, we escape $, `, \ and " characters
+					current_token.push(any);
+				}
+				else {
+					current_token.push('\\');
+					current_token.push(any); // In double quotes, we just add the character to the current token
+				}
+			}
 		}
 	};
 
