@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use std::{env, fs};
 use std::collections::HashMap;
 use std::process::Command;
+use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), std::env::VarError> {
 	// Define the built-in commands for this shell
@@ -16,7 +17,7 @@ fn main() -> Result<(), std::env::VarError> {
 		.filter(|x| !x.contains("/home/admin/.vscode-server"))
 		.collect();
 
-		let path_commands: HashMap<String, std::path::PathBuf> = paths
+		let path_commands: HashMap<String, PathBuf> = paths
 			.into_iter()
 			.flat_map(|dir| {
 				fs::read_dir(dir)
@@ -96,9 +97,11 @@ fn main() -> Result<(), std::env::VarError> {
 			},
 
 			"cd" => {
-				let dir = parts.next().unwrap_or("/"); // default to root if no argument is given
-				if env::set_current_dir(dir).is_err() {
-					eprintln!("cd: {dir}: No such file or directory");
+				let query = parts.next().unwrap_or("/"); // default to root if no argument is given
+				let dir = Path::new(query).canonicalize();
+				match dir {
+					Err(_) => eprintln!("cd: {query}: No such file or directory"),
+					Ok(path) => env::set_current_dir(path).unwrap()
 				}
 			},
 
