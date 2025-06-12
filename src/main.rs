@@ -5,6 +5,55 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::path::{Path, PathBuf};
 
+enum TokenizerState {
+	InSingleQuote,
+	OutSingleQuote,
+}
+
+fn tokenize(input: &str) -> Vec<String> {
+	let mut tokens = Vec::new();
+	let mut current_token = String::new();
+	let mut state = TokenizerState::OutSingleQuote;
+
+	for ch in input.chars() {
+		match (&state, ch) {
+			(TokenizerState::OutSingleQuote, '\'') => {
+				state = TokenizerState::InSingleQuote;
+			},
+
+			(TokenizerState::InSingleQuote, '\'') => {
+				state = TokenizerState::OutSingleQuote;
+				tokens.push(current_token.clone());
+				current_token.clear();
+			},
+				
+			(TokenizerState::OutSingleQuote, char) => {
+				if char.is_whitespace() { // If we encounter whitespace, we finalize the current token
+					if !current_token.is_empty() {
+						tokens.push(current_token.clone());
+						current_token.clear();
+					}
+				} else {
+					current_token.push(char); // Otherwise, we add the character to the current token
+				}
+			},
+
+			(TokenizerState::InSingleQuote, any) => {
+				current_token.push(any); // In single quotes, we just add the character to the current token
+			},
+		}
+	};
+
+	// If we have a token left at the end, we push it to the list
+	// This handles the case where the last token is not followed by whitespace
+	// or a closing quote
+	if !current_token.is_empty() {
+		tokens.push(current_token);
+	}
+
+	tokens
+}
+
 fn main() -> Result<(), std::env::VarError> {
 	// Define the built-in commands for this shell
 	static BUILTIN_COMMANDS: [&str; 4] = ["type", "echo", "exit", "pwd"];
@@ -55,15 +104,16 @@ fn main() -> Result<(), std::env::VarError> {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
 		
-		let mut parts = input.trim().split_whitespace();
-		let Some(cmd) = parts.next() else { // empty input -> prompt again
+		let tokens = tokenize(input.trim());
+		let mut argv = tokens.iter().map(|x| x.as_str());
+		let Some(cmd) = argv.next() else { // empty input -> prompt again
 			continue;
     	};
 
 		// Validate input
 		match cmd {
 			"type" => {
-				let Some(query) = parts.next() else {    // no argument after `type`
+				let Some(query) = argv.next() else {    // no argument after `type`
 					eprintln!("type: missing operand");
 					continue;
 				};
@@ -78,11 +128,11 @@ fn main() -> Result<(), std::env::VarError> {
 			}
 
 			"echo" => {
-				println!("{}", parts.collect::<Vec<&str>>().join(" "));
+				println!("{}", argv.collect::<Vec<&str>>().join(" "));
 			},
 
 			"exit" => {
-				if parts.next() == Some("0") {std::process::exit(0)} 
+				if argv.next() == Some("0") {std::process::exit(0)} 
 				else {
 					println!("Did you mean `exit 0`?");
 					continue
@@ -101,8 +151,8 @@ fn main() -> Result<(), std::env::VarError> {
 				// or to the root directory if HOME is not set
 				let fallback = env::var("HOME").unwrap_or_else(|_| "/".to_owned());
 				let query = 
-				match parts.next() {
-					Some("~") => fallback,
+				match argv.next() {
+					Some("~") => fallback, 
 					Some(q) => q.to_owned(),
 					None => fallback
 				};
@@ -118,7 +168,7 @@ fn main() -> Result<(), std::env::VarError> {
 			other => {
 				if let Some(_) = path_commands.get(other) {
 					let output = Command::new(other)
-						.args(parts)
+						.args(argv)
 						.output()
 						.expect("Failed to execute command");
 					
