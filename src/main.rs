@@ -23,7 +23,6 @@ fn tokenize(input: &str) -> Vec<String> {
 
 			(TokenizerState::InSingleQuote, '\'') => {
 				state = TokenizerState::OutSingleQuote;
-				tokens.push(current_token.clone());
 			},
 				
 			(TokenizerState::OutSingleQuote, char) => {
