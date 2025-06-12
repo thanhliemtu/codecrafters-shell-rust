@@ -10,7 +10,8 @@ enum TokenizerState {
 	InSingleQuote,
 	InDoubleQuote,
 	BackSlashInDoubleQuote,
-	Out,
+	Out, // Outside of quotes
+	BackSlashOutsideQuote, // Outside of quotes, but a backslash was encountered
 }
 
 fn tokenize(input: &str) -> Vec<String> {
@@ -42,10 +43,20 @@ fn tokenize(input: &str) -> Vec<String> {
 						tokens.push(current_token.clone());
 						current_token.clear();
 					}
-				} else {
+				} 
+				else if char == '\\' {
+					state = TokenizerState::BackSlashOutsideQuote; // If we encounter a backslash, we change the state
+					continue; // Skip adding the backslash to the current token
+				} 
+				else {
 					current_token.push(char); // Otherwise, we add the character to the current token
 				}
 			},
+			
+			(TokenizerState::BackSlashOutsideQuote, any) =>{
+				current_token.push(any);
+				state = TokenizerState::Out; // Return to the outside state after handling the backslash
+			}
 
 			(TokenizerState::InSingleQuote, any) => {
 				current_token.push(any); // In single quotes, we just add the character to the current token
