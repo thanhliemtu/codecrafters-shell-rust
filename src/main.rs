@@ -4,6 +4,8 @@ use std::{env, fs};
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::path::{Path, PathBuf};
+use std::error::Error;
+use std::fs::{File, OpenOptions};
 
 #[derive(PartialEq)]
 enum TokenizerState {
@@ -14,12 +16,12 @@ enum TokenizerState {
 	BackSlashOutsideQuote, // Outside of quotes, but a backslash was encountered
 }
 
-#[derive(PartialEq)]
-enum ParserState {
-	Arguments,
-	TruncateRedirect, // In this state, the next token is a file path for truncating redirection
-	AppendRedirect, // In this state, the next token is a file path for appending redirection
-}
+// #[derive(PartialEq)]
+// enum ParserState {
+// 	Arguments,
+// 	TruncateRedirect, // In this state, the next token is a file path for truncating redirection
+// 	AppendRedirect, // In this state, the next token is a file path for appending redirection
+// }
 
 fn tokenize_input(input: &str) -> Vec<String> {
 	let mut tokens = Vec::new();
@@ -104,7 +106,7 @@ fn tokenize_input(input: &str) -> Vec<String> {
 #[derive(Debug)]
 struct ParsedCommand {
 	argv: Vec<String>, // Arguments for the command
-	redirect: Option<Redirection> // Path to the file for redirection
+	redirects: HashMap<u8, Redirection> // Path to the file for redirection
 }
 
 #[derive(Debug)]
@@ -122,55 +124,85 @@ enum RedirectMode {
 
 // This takes ownership of the tokens and returns a ParsedCommand wrapped in Result
 // If the parsing fails, it returns an error message
-fn parse_tokens(tokens: Vec<String>) -> Result<ParsedCommand, String> {
+// fn parse_tokens(tokens: Vec<String>) -> Result<ParsedCommand, Box<dyn Error>> {
+// 	let mut argv: Vec<String> = Vec::new();
+//     let mut redirect: Option<Redirection> = Option::None;
+// 	let mut state = ParserState::Arguments;
+
+// 	for token in tokens {
+// 		match (&state, token.as_str()) {
+// 			(ParserState::Arguments, ">" | "1>") => {
+// 				state = ParserState::TruncateRedirect; // Switch to truncate redirect state
+// 			},
+
+// 			(ParserState::Arguments, ">>" | "1>>") => {
+// 				state = ParserState::AppendRedirect; // Switch to append redirect state
+// 			},
+			
+// 			(ParserState::TruncateRedirect, path) => {
+// 				redirect = Some(Redirection{
+// 					fd: 1, // Standard output
+// 					mode: RedirectMode::Truncate,
+// 					path: PathBuf::from(path),
+// 				});
+// 				state = ParserState::Arguments;
+// 			},
+
+// 			(ParserState::AppendRedirect, path) => {
+// 				redirect = Some(Redirection{
+// 					fd: 1, // Standard output
+// 					mode: RedirectMode::Append,
+// 					path: PathBuf::from(path),
+// 				});
+// 				state = ParserState::Arguments;
+// 			},
+			
+// 			(ParserState::Arguments, arg) => {
+// 				// If we are in the arguments state, we just add the argument to the list
+// 				argv.push(arg.to_owned());
+// 			},
+// 		}
+// 	}
+
+// 	if state != ParserState::Arguments {
+// 		return Err("Incomplete command: missing file path for redirection".to_owned().into());
+// 	}
+
+// 	// Ok(ParsedCommand { argv, redirect });
+// } 
+
+
+fn new_token_parser(tokens: Vec<String>)-> Result<ParsedCommand, Box<dyn Error>> {
 	let mut argv: Vec<String> = Vec::new();
-    let mut redirect: Option<Redirection> = Option::None;
-	let mut state = ParserState::Arguments;
+	let mut pending: Option<(u8, RedirectMode)> = Option::None;
+	let mut redirects: HashMap<u8, Redirection> = HashMap::new();
 
 	for token in tokens {
-		match (&state, token.as_str()) {
-			(ParserState::Arguments, ">" | "1>") => {
-				state = ParserState::TruncateRedirect; // Switch to truncate redirect state
-			},
-
-			(ParserState::Arguments, ">>" | "1>>") => {
-				state = ParserState::AppendRedirect; // Switch to append redirect state
-			},
-			
-			(ParserState::TruncateRedirect, path) => {
-				redirect = Some(Redirection{
-					fd: 1, // Standard output
-					mode: RedirectMode::Truncate,
-					path: PathBuf::from(path),
-				});
-				state = ParserState::Arguments;
-			},
-
-			(ParserState::AppendRedirect, path) => {
-				redirect = Some(Redirection{
-					fd: 1, // Standard output
-					mode: RedirectMode::Append,
-					path: PathBuf::from(path),
-				});
-				state = ParserState::Arguments;
-			},
-			
-			(ParserState::Arguments, arg) => {
-				// If we are in the arguments state, we just add the argument to the list
-				argv.push(arg.to_owned());
-			},
+		match token.as_str() {
+			">"  | "1>" => pending = Some((1, RedirectMode::Truncate)),
+			">>" | "1>>"=> pending = Some((1, RedirectMode::Append)),
+			"2>"       => pending = Some((2, RedirectMode::Truncate)),
+			"2>>"      => pending = Some((2, RedirectMode::Append)),
+			_ => {
+				if let Some((fd, mode)) = pending.take() {
+					redirects.insert(fd, Redirection { fd, mode, path: token.into() });
+				} else {
+					argv.push(token);
+				}
+			}
 		}
 	}
 
-	if state != ParserState::Arguments {
-		return Err("Incomplete command: missing file path for redirection".to_owned());
-	}
+	if pending.is_some() {
+        return Err("syntax error: redirection without file".into());
+    }
 
-	Ok(ParsedCommand { argv, redirect })
-} 
+    Ok(ParsedCommand { argv, redirects })
+}
 
-fn open_redir(redir: &Redirection) -> std::io::Result<std::fs::File> {
-    use std::fs::{File, OpenOptions};
+
+fn open_redir(redir: &Redirection) -> std::io::Result<fs::File> {
+    
     match redir.mode {
         RedirectMode::Truncate => File::create(&redir.path),
         RedirectMode::Append   => OpenOptions::new()
@@ -182,55 +214,60 @@ fn open_redir(redir: &Redirection) -> std::io::Result<std::fs::File> {
 
 /// Return a boxed writer that is either the redirection file
 /// or Stdout when no redirection was requested.
-fn choose_writer(redir: &Option<Redirection>)
-        -> std::io::Result<Box<dyn std::io::Write>> {
-    if let Some(r) = redir {
-        // open_redir() already picks Truncate vs Append
-        Ok(Box::new(open_redir(r)?))
-    } else {
-        Ok(Box::new(std::io::stdout()))
-    }
+fn writer_for_fd(redirects: &HashMap<u8, Redirection>, fd: u8) -> std::io::Result<Box<dyn std::io::Write>> {
+    if let Some(r) = redirects.get(&fd) { // If there is a redirection for this fd
+    	Ok(Box::new(open_redir(r)?))
+	} else {
+		match fd {
+			1 => Ok(Box::new(io::stdout())),
+			2 => Ok(Box::new(io::stderr())),
+			_ => Err(io::Error::new(
+				io::ErrorKind::Other,
+				format!("unsupported fd {fd}"),
+			)),
+		}
+	}
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
 	// Define the built-in commands for this shell
 	static BUILTIN_COMMANDS: [&str; 4] = ["type", "echo", "exit", "pwd"];
 
 	// Build an index of *external* commands once at start-up
-	let val = env::var("PATH").unwrap(); // this panics if PATH is not set, in which case what's the point?
+	let val = env::var("PATH")?; // this panics if PATH is not set, in which case what's the point?
 	let paths: Vec<&str> = val
 		.split(':')
 		.filter(|x| !x.contains("/mnt/c"))
 		.filter(|x| !x.contains("/home/admin/.vscode-server"))
 		.collect();
 
-		let path_commands: HashMap<String, PathBuf> = paths
-			.into_iter()
-			.flat_map(|dir| {
-				fs::read_dir(dir)
-					.ok()
-					.into_iter()
-					.flatten()
-					.filter_map(Result::ok)
-					.filter_map(|e| {
-						if !e.file_type().map_or(false, |ft| ft.is_file()) {
-							// Only consider files, skip directories and other types
-							// Also skip if the filetype cannot be determined
-							return None;
-						}
+	let path_commands: HashMap<String, PathBuf> = paths
+		.into_iter()
+		.flat_map(|dir| {
+			fs::read_dir(dir)
+				.ok()
+				.into_iter()
+				.flatten()
+				.filter_map(Result::ok)
+				.filter_map(|e| {
+					if !e.file_type().map_or(false, |ft| ft.is_file()) {
+						// Only consider files, skip directories and other types
+						// Also skip if the filetype cannot be determined
+						return None;
+					}
 
-						let p = e.path();
-						let name = match p.file_name().and_then(|n| n.to_str()) {
-							Some(s) => s.to_owned(),
-							None => return None,
-						};
-						Some((name, p)) 
-					})
-			})
-			.fold(HashMap::new(), |mut acc, (name, path)| {
-				acc.entry(name).or_insert(path);
-				acc
-			});
+					let p = e.path();
+					let name = match p.file_name().and_then(|n| n.to_str()) {
+						Some(s) => s.to_owned(),
+						None => return None,
+					};
+					Some((name, p)) 
+				})
+		})
+		.fold(HashMap::new(), |mut acc, (name, path)| {
+			acc.entry(name).or_insert(path);
+			acc
+		});
 
 	// Wait for user input
     loop {
@@ -249,7 +286,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			continue;
 		}
 
-		let ParsedCommand { argv, redirect } = match parse_tokens(tokens) {
+		let ParsedCommand { argv, redirects } = match new_token_parser(tokens) {
 			Ok(p) => p,
 			Err(e) => {
 				eprintln!("{e}");
@@ -264,14 +301,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		match cmd {
 			"type" => {
 				let Some(query) = argv.next() else {    // no argument after `type`
-					eprintln!("type: missing operand");
+					let mut err_out = writer_for_fd(&redirects, 2)?;
+					writeln!(err_out, "type: missing operand")?;
 					continue;
 				};
 
-				let mut output_stream = match choose_writer(&redirect) {
-					Ok(w)  => w,
-					Err(e) => { eprintln!("type: {e}"); continue; }
-				};
+				let mut out = writer_for_fd(&redirects, 1)?;
 
 				let msg = if BUILTIN_COMMANDS.contains(&query) {
 					format!("{query} is a shell builtin")
@@ -281,18 +316,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					format!("{query}: not found")
 				};
 
-				writeln!(output_stream, "{}", msg).ok()
-					.expect("Failed to write to output stream");
+				writeln!(out, "{msg}")?;
 			}
 
 			"echo" => {
-				let mut output_stream = match choose_writer(&redirect) {
-					Ok(w)  => w,
-					Err(e) => { eprintln!("echo: {e}"); continue; }
-				};
+				let mut out = writer_for_fd(&redirects, 1)?;
+				let _ = writer_for_fd(&redirects, 2)?;
 
-				writeln!(output_stream, "{}", argv.collect::<Vec<&str>>().join(" ")).ok()
-					.expect("Failed to write to output stream");
+    			writeln!(out, "{}", argv.collect::<Vec<&str>>().join(" "))?;
 			},
 
 			"exit" => {
@@ -304,15 +335,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			},
 
 			"pwd" => {
-				let mut output_stream = match choose_writer(&redirect) {
-					Ok(w)  => w,
-					Err(e) => { eprintln!("pwd: {e}"); continue; }
-				};
-
 				match env::current_dir() {
-					Ok(path) => writeln!(output_stream, "{}", path.display()).ok()
-						.expect("Failed to write to output stream"),
-					Err(e) => eprintln!("pwd: {}", e),
+					Ok(path) => {
+						let mut out = writer_for_fd(&redirects, 1)?;
+							writeln!(out, "{}", path.display())?;
+					}
+					Err(e) => {
+						let mut err_out = writer_for_fd(&redirects, 2)?;
+						writeln!(err_out, "pwd: {e}")?;
+					}
 				}
 			},
 
@@ -343,20 +374,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						.stdin(Stdio::inherit()) 
 						.stderr(Stdio::inherit());
 					
-					if let Some(r) = &redirect {
-						if r.fd == 1 {
-							// use the existing helper instead of a manual match
-							let file = match open_redir(r) {
-								Ok(f)  => f,
-								Err(e) => { eprintln!("{cmd}: {e}"); continue; }
-							};
-							child.stdout(std::process::Stdio::from(file));
-						} else {
-							eprintln!("{cmd}: unsupported fd {}", r.fd);
-							continue;
-						}	
-					} else {
-						child.stdout(Stdio::inherit()); // If no redirection, inherit stdout
+					for redir in redirects.values() {
+						let file = open_redir(redir)?;
+
+						// Match the file descriptor to set the appropriate output stream
+						// 1 for stdout, 2 for stderr
+						match redir.fd {
+							1 => { child.stdout(Stdio::from(file)); }
+							2 => { child.stderr(Stdio::from(file)); }
+							_ => eprintln!("{}: unsupported file descriptor {}", cmd, redir.fd),
+						}
 					}
 					
 					if let Err(e) = child.status() {
