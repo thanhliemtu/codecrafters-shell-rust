@@ -16,13 +16,6 @@ enum TokenizerState {
 	BackSlashOutsideQuote, // Outside of quotes, but a backslash was encountered
 }
 
-// #[derive(PartialEq)]
-// enum ParserState {
-// 	Arguments,
-// 	TruncateRedirect, // In this state, the next token is a file path for truncating redirection
-// 	AppendRedirect, // In this state, the next token is a file path for appending redirection
-// }
-
 fn tokenize_input(input: &str) -> Vec<String> {
 	let mut tokens = Vec::new();
 	let mut current_token = String::new();
@@ -121,55 +114,6 @@ enum RedirectMode {
     Truncate,   // >
     Append,     // >>
 }
-
-// This takes ownership of the tokens and returns a ParsedCommand wrapped in Result
-// If the parsing fails, it returns an error message
-// fn parse_tokens(tokens: Vec<String>) -> Result<ParsedCommand, Box<dyn Error>> {
-// 	let mut argv: Vec<String> = Vec::new();
-//     let mut redirect: Option<Redirection> = Option::None;
-// 	let mut state = ParserState::Arguments;
-
-// 	for token in tokens {
-// 		match (&state, token.as_str()) {
-// 			(ParserState::Arguments, ">" | "1>") => {
-// 				state = ParserState::TruncateRedirect; // Switch to truncate redirect state
-// 			},
-
-// 			(ParserState::Arguments, ">>" | "1>>") => {
-// 				state = ParserState::AppendRedirect; // Switch to append redirect state
-// 			},
-			
-// 			(ParserState::TruncateRedirect, path) => {
-// 				redirect = Some(Redirection{
-// 					fd: 1, // Standard output
-// 					mode: RedirectMode::Truncate,
-// 					path: PathBuf::from(path),
-// 				});
-// 				state = ParserState::Arguments;
-// 			},
-
-// 			(ParserState::AppendRedirect, path) => {
-// 				redirect = Some(Redirection{
-// 					fd: 1, // Standard output
-// 					mode: RedirectMode::Append,
-// 					path: PathBuf::from(path),
-// 				});
-// 				state = ParserState::Arguments;
-// 			},
-			
-// 			(ParserState::Arguments, arg) => {
-// 				// If we are in the arguments state, we just add the argument to the list
-// 				argv.push(arg.to_owned());
-// 			},
-// 		}
-// 	}
-
-// 	if state != ParserState::Arguments {
-// 		return Err("Incomplete command: missing file path for redirection".to_owned().into());
-// 	}
-
-// 	// Ok(ParsedCommand { argv, redirect });
-// } 
 
 
 fn new_token_parser(tokens: Vec<String>)-> Result<ParsedCommand, Box<dyn Error>> {
