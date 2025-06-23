@@ -337,7 +337,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			// Handle external commands, i.e., commands not in the built-in list
 			_ => {
 				if let Some(cmd_path) = path_commands.get(cmd) {
-					let mut child = Command::new(cmd_path);
+					let mut child = Command::new(cmd);
 
 					child.args(argv)                     
 						.stdin(Stdio::inherit()) 
